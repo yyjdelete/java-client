@@ -28,7 +28,7 @@ public class DateSerializer implements JsonSerializer<Date>, JsonDeserializer<Da
 
     private static final int THREE_MILLISECONDS_DATE_FORMAT_LENGTH = 29;
 
-    private static final int NO_MILLISECONDS_DATE_FORMAT_LENGTH = 25;//"yyyy-MM-ddTHH:mm:dd+00:00".length()
+    private static final int NO_MILLISECONDS_DATE_FORMAT_LENGTH = 25;//"yyyy-MM-ddTHH:mm:ss+00:00".length()
 
     /**
      * Deserializes a JsonElement containing an ISO-8601 formatted date
@@ -60,20 +60,44 @@ public class DateSerializer implements JsonSerializer<Date>, JsonDeserializer<Da
     public static String normalize(String strVal) {
         String s;
 
-        if (strVal == null || strVal.length() < 19) {//"yyyy-MM-ddTHH:mm:dd".length()
+        if (strVal == null || strVal.length() < 10) {//"yyyy-MM-dd".length()
             throw new JsonParseException("Invalid length for: " + strVal);
         }
-        
-        //normalize time zone
-        if ((strVal.lastIndexOf('+') == strVal.length() - 6) ||//"+08:00".length()
-                (strVal.lastIndexOf('-') == strVal.length() - 6)) {//"-08:00".length()
-            s = strVal;
-        } else if (strVal.endsWith("Z")) {
-            // Change Z to +00:00 to adapt the string to a format
-            // that can be parsed in Java
-            s = strVal.substring(0, strVal.length() - 1) + "+00:00";//"Z".length()
+        if (strVal.charAt(4) != '-') {
+            //to full format
+            strVal = strVal.substring(0, 4) + "-" + strVal.substring(4, 6) + "-" + strVal.substring(6);
+        }
+        final int origLen = strVal.length();
+        final int dateIndex = strVal.indexOf('T');
+        if (dateIndex == -1) {//yyyy-MM-dd
+            s = strVal + "T00:00:00.000+00:00";
+        } else if (dateIndex == origLen - 1) {//yyyy-MM-ddT
+            s = strVal + "00:00:00.000+00:00";
         } else {
-            s = strVal + "+00:00";
+            if (strVal.charAt(13) != ':') {
+                //to full format
+                strVal = strVal.substring(0, 13) + ":" + strVal.substring(13, 15) + ":" + strVal.substring(15);
+            }
+            if (strVal.endsWith("Z")) {
+                // Change Z to +00:00 to adapt the string to a format
+                // that can be parsed in Java
+                s = strVal.substring(0, strVal.length() - 1) + "+00:00";//"Z".length()
+            } else {
+                int timezoneIndex = strVal.lastIndexOf('+');
+                if (timezoneIndex == -1)
+                    timezoneIndex = strVal.lastIndexOf('-');
+
+                //normalize time zone
+                if (timezoneIndex == origLen - 6) {//"-08:00".length()
+                    s = strVal;
+                } else if (timezoneIndex == strVal.length() - 5) {//"-0800".length()
+                    s = strVal.substring(0, timezoneIndex + 3) + ":" + strVal.substring(timezoneIndex + 3);
+                } else if (timezoneIndex == strVal.length() - 3) {//"-08".length()
+                    s = strVal + ":00";
+                } else {
+                    s = strVal + "+00:00";
+                }
+            }
         }
 
         try {
@@ -83,7 +107,7 @@ public class DateSerializer implements JsonSerializer<Date>, JsonDeserializer<Da
                 if (len == NO_MILLISECONDS_DATE_FORMAT_LENGTH) {
                     // add dot and extra milliseconds characters
                     s = s.substring(0, 19) + ".000" + s.substring(19);
-                } else if (len > THREE_MILLISECONDS_DATE_FORMAT_LENGTH) { // yyyy-MM-ddTHH:mm:dd.SSS+00:00
+                } else if (len > THREE_MILLISECONDS_DATE_FORMAT_LENGTH) { // yyyy-MM-ddTHH:mm:ss.SSS+00:00
                     // remove the extra milliseconds characters
                     s = s.substring(0, 23) + s.substring(len - 6);
                 } else if (len < THREE_MILLISECONDS_DATE_FORMAT_LENGTH) {
